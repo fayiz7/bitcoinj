@@ -29,7 +29,6 @@ import org.bitcoinj.crypto.TransactionSignature;
 import org.bitcoinj.script.Script.ScriptType;
 
 import javax.annotation.Nullable;
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -47,7 +46,7 @@ import static org.bitcoinj.script.ScriptOpCodes.*;
  * protocol at a lower level.</p>
  */
 public class ScriptBuilder {
-    private List<ScriptChunk> chunks;
+    private final List<ScriptChunk> chunks;
 
     /** Creates a fresh ScriptBuilder with an empty program. */
     public ScriptBuilder() {
@@ -482,6 +481,9 @@ public class ScriptBuilder {
      * Creates a scriptPubKey that sends to the given script hash. Read
      * <a href="https://github.com/bitcoin/bips/blob/master/bip-0016.mediawiki">BIP 16</a> to learn more about this
      * kind of script.
+     *
+     * @param hash The hash of the redeem script
+     * @return an output script that sends to the redeem script
      */
     public static Script createP2SHOutputScript(byte[] hash) {
         checkArgument(hash.length == 20);
@@ -489,7 +491,10 @@ public class ScriptBuilder {
     }
 
     /**
-     * Creates a scriptPubKey for the given redeem script.
+     * Creates a scriptPubKey for a given redeem script.
+     *
+     * @param redeemScript The redeem script
+     * @return an output script that sends to the redeem script
      */
     public static Script createP2SHOutputScript(Script redeemScript) {
         byte[] hash = Utils.sha256hash160(redeemScript.getProgram());
@@ -513,8 +518,12 @@ public class ScriptBuilder {
     }
 
     /**
-     * Creates a P2SH output script with given public keys and threshold. Given public keys will be placed in
-     * redeem script in the lexicographical sorting order.
+     * Creates a P2SH output script for n-of-m multisig with given public keys and threshold. Given public keys will
+     * be placed in redeem script in the lexicographical sorting order.
+     *
+     * @param threshold The threshold number of keys that must sign (n)
+     * @param pubkeys A list of m public keys
+     * @return The P2SH multisig output script
      */
     public static Script createP2SHOutputScript(int threshold, List<ECKey> pubkeys) {
         Script redeemScript = createRedeemScript(threshold, pubkeys);
@@ -522,8 +531,12 @@ public class ScriptBuilder {
     }
 
     /**
-     * Creates redeem script with given public keys and threshold. Given public keys will be placed in
+     * Creates an n-of-m multisig redeem script with given public keys and threshold. Given public keys will be placed in
      * redeem script in the lexicographical sorting order.
+     *
+     * @param threshold The threshold number of keys that must sign (n)
+     * @param pubkeys A list of m public keys
+     * @return The P2SH multisig redeem script
      */
     public static Script createRedeemScript(int threshold, List<ECKey> pubkeys) {
         pubkeys = new ArrayList<>(pubkeys);
@@ -539,54 +552,5 @@ public class ScriptBuilder {
     public static Script createOpReturnScript(byte[] data) {
         checkArgument(data.length <= 80);
         return new ScriptBuilder().op(OP_RETURN).data(data).build();
-    }
-
-    public static Script createCLTVPaymentChannelOutput(BigInteger time, ECKey from, ECKey to) {
-        byte[] timeBytes = Utils.reverseBytes(Utils.encodeMPI(time, false));
-        if (timeBytes.length > 5) {
-            throw new RuntimeException("Time too large to encode as 5-byte int");
-        }
-        return new ScriptBuilder().op(OP_IF)
-                .data(to.getPubKey()).op(OP_CHECKSIGVERIFY)
-                .op(OP_ELSE)
-                .data(timeBytes).op(OP_CHECKLOCKTIMEVERIFY).op(OP_DROP)
-                .op(OP_ENDIF)
-                .data(from.getPubKey()).op(OP_CHECKSIG).build();
-    }
-
-    public static Script createCLTVPaymentChannelRefund(TransactionSignature signature) {
-        ScriptBuilder builder = new ScriptBuilder();
-        builder.data(signature.encodeToBitcoin());
-        builder.data(new byte[] { 0 }); // Use the CHECKLOCKTIMEVERIFY if branch
-        return builder.build();
-    }
-
-    public static Script createCLTVPaymentChannelP2SHRefund(TransactionSignature signature, Script redeemScript) {
-        ScriptBuilder builder = new ScriptBuilder();
-        builder.data(signature.encodeToBitcoin());
-        builder.data(new byte[] { 0 }); // Use the CHECKLOCKTIMEVERIFY if branch
-        builder.data(redeemScript.getProgram());
-        return builder.build();
-    }
-
-    public static Script createCLTVPaymentChannelP2SHInput(byte[] from, byte[] to, Script redeemScript) {
-        ScriptBuilder builder = new ScriptBuilder();
-        builder.data(from);
-        builder.data(to);
-        builder.smallNum(1); // Use the CHECKLOCKTIMEVERIFY if branch
-        builder.data(redeemScript.getProgram());
-        return builder.build();
-    }
-
-    public static Script createCLTVPaymentChannelInput(TransactionSignature from, TransactionSignature to) {
-        return createCLTVPaymentChannelInput(from.encodeToBitcoin(), to.encodeToBitcoin());
-    }
-
-    public static Script createCLTVPaymentChannelInput(byte[] from, byte[] to) {
-        ScriptBuilder builder = new ScriptBuilder();
-        builder.data(from);
-        builder.data(to);
-        builder.smallNum(1); // Use the CHECKLOCKTIMEVERIFY if branch
-        return builder.build();
     }
 }

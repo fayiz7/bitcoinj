@@ -56,24 +56,40 @@ public abstract class AbstractBitcoinNetParams extends NetworkParameters {
 
     public AbstractBitcoinNetParams() {
         super();
+        interval = INTERVAL;
+        subsidyDecreaseBlockCount = 210000;
     }
 
     /**
      * Checks if we are at a reward halving point.
-     * @param height The height of the previous stored block
+     * @param previousHeight The height of the previous stored block
      * @return If this is a reward halving point
      */
-    public final boolean isRewardHalvingPoint(final int height) {
-        return ((height + 1) % REWARD_HALVING_INTERVAL) == 0;
+    public final boolean isRewardHalvingPoint(final int previousHeight) {
+        return ((previousHeight + 1) % REWARD_HALVING_INTERVAL) == 0;
+    }
+
+    /**
+     * <p>A utility method that calculates how much new Bitcoin would be created by the block at the given height.
+     * The inflation of Bitcoin is predictable and drops roughly every 4 years (210,000 blocks). At the dawn of
+     * the system it was 50 coins per block, in late 2012 it went to 25 coins per block, and so on. The size of
+     * a coinbase transaction is inflation plus fees.</p>
+     *
+     * <p>The half-life is controlled by {@link NetworkParameters#getSubsidyDecreaseBlockCount()}.</p>
+     *
+     * @param height the height of the block to calculate inflation for
+     */
+    public Coin getBlockInflation(int height) {
+        return Coin.FIFTY_COINS.shiftRight(height / getSubsidyDecreaseBlockCount());
     }
 
     /**
      * Checks if we are at a difficulty transition point.
-     * @param height The height of the previous stored block
+     * @param previousHeight The height of the previous stored block
      * @return If this is a difficulty transition point
      */
-    public final boolean isDifficultyTransitionPoint(final int height) {
-        return ((height + 1) % this.getInterval()) == 0;
+    public final boolean isDifficultyTransitionPoint(final int previousHeight) {
+        return ((previousHeight + 1) % this.getInterval()) == 0;
     }
 
     @Override

@@ -65,7 +65,7 @@ public class BuildCheckpoints {
         parser.accepts("help");
         OptionSpec<NetworkEnum> netFlag = parser.accepts("net").withRequiredArg().ofType(NetworkEnum.class).defaultsTo(NetworkEnum.MAIN);
         parser.accepts("peer").withRequiredArg();
-        OptionSpec<Integer> daysFlag = parser.accepts("days").withRequiredArg().ofType(Integer.class).defaultsTo(30);
+        OptionSpec<Integer> daysFlag = parser.accepts("days").withRequiredArg().ofType(Integer.class).defaultsTo(7);
         OptionSet options = parser.parse(args);
 
         if (options.has("help")) {
@@ -132,7 +132,7 @@ public class BuildCheckpoints {
         }
 
         // Sorted map of block height to StoredBlock object.
-        final TreeMap<Integer, StoredBlock> checkpoints = new TreeMap<Integer, StoredBlock>();
+        final TreeMap<Integer, StoredBlock> checkpoints = new TreeMap<>();
 
         long now = new Date().getTime() / 1000;
         peerGroup.setFastCatchupTimeSecs(now);
@@ -140,15 +140,12 @@ public class BuildCheckpoints {
         final long timeAgo = now - (86400 * options.valueOf(daysFlag));
         System.out.println("Checkpointing up to " + Utils.dateTimeFormat(timeAgo * 1000));
 
-        chain.addNewBestBlockListener(Threading.SAME_THREAD, new NewBestBlockListener() {
-            @Override
-            public void notifyNewBestBlock(StoredBlock block) throws VerificationException {
-                int height = block.getHeight();
-                if (height % params.getInterval() == 0 && block.getHeader().getTimeSeconds() <= timeAgo) {
-                    System.out.println(String.format("Checkpointing block %s at height %d, time %s",
-                            block.getHeader().getHash(), block.getHeight(), Utils.dateTimeFormat(block.getHeader().getTime())));
-                    checkpoints.put(height, block);
-                }
+        chain.addNewBestBlockListener(Threading.SAME_THREAD, block -> {
+            int height = block.getHeight();
+            if (height % params.getInterval() == 0 && block.getHeader().getTimeSeconds() <= timeAgo) {
+                System.out.println(String.format("Checkpointing block %s at height %d, time %s",
+                        block.getHeader().getHash(), block.getHeight(), Utils.dateTimeFormat(block.getHeader().getTime())));
+                checkpoints.put(height, block);
             }
         });
 

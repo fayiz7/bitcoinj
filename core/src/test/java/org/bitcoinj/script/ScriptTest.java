@@ -41,6 +41,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+import static org.bitcoinj.core.Transaction.SERIALIZE_TRANSACTION_NO_WITNESS;
 import static org.bitcoinj.core.Utils.HEX;
 import static org.bitcoinj.script.ScriptOpCodes.OP_0;
 import static org.bitcoinj.script.ScriptOpCodes.OP_INVALIDOPCODE;
@@ -91,7 +92,7 @@ public class ScriptTest {
         Script script = ScriptBuilder.createMultiSigOutputScript(3, keys);
         assertTrue(ScriptPattern.isSentToMultisig(script));
         List<ECKey> pubkeys = new ArrayList<>(3);
-        for (ECKey key : keys) pubkeys.add(ECKey.fromPublicOnly(key.getPubKeyPoint()));
+        for (ECKey key : keys) pubkeys.add(ECKey.fromPublicOnly(key));
         assertEquals(script.getPubKeys(), pubkeys);
         assertFalse(ScriptPattern.isSentToMultisig(ScriptBuilder.createP2PKOutputScript(new ECKey())));
         try {
@@ -394,7 +395,17 @@ public class ScriptTest {
             if (test.isArray() && test.size() == 1 && test.get(0).isTextual())
                 continue; // This is a comment.
             Map<TransactionOutPoint, Script> scriptPubKeys = parseScriptPubKeys(test.get(0));
-            Transaction transaction = TESTNET.getDefaultSerializer().makeTransaction(HEX.decode(test.get(1).asText().toLowerCase()));
+            byte[] txBytes = HEX.decode(test.get(1).asText().toLowerCase());
+            MessageSerializer serializer = TESTNET.getDefaultSerializer();
+            Transaction transaction;
+            try {
+                transaction = serializer.makeTransaction(txBytes);
+            } catch (ProtocolException ignore) {
+                // Try to parse as a no-witness transaction because some vectors are 0-input, 1-output txs that fail
+                // to correctly parse as witness transactions.
+                int protoVersionNoWitness = serializer.getProtocolVersion() | SERIALIZE_TRANSACTION_NO_WITNESS;
+                transaction = serializer.withProtocolVersion(protoVersionNoWitness).makeTransaction(txBytes);
+            }
             Set<VerifyFlag> verifyFlags = parseVerifyFlags(test.get(2).asText());
 
             boolean valid = true;
@@ -430,14 +441,8 @@ public class ScriptTest {
     }
 
     @Test
-    public void testCLTVPaymentChannelOutput() {
-        Script script = ScriptBuilder.createCLTVPaymentChannelOutput(BigInteger.valueOf(20), new ECKey(), new ECKey());
-        assertTrue("script is locktime-verify", ScriptPattern.isSentToCltvPaymentChannel(script));
-    }
-
-    @Test
     public void getToAddress() throws Exception {
-        // pay to pubkey
+        // P2PK
         ECKey toKey = new ECKey();
         Address toAddress = LegacyAddress.fromKey(TESTNET, toKey);
         assertEquals(toAddress, ScriptBuilder.createP2PKOutputScript(toKey).getToAddress(TESTNET, true));

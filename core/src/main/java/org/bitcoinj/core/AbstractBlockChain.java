@@ -18,7 +18,6 @@
 package org.bitcoinj.core;
 
 import com.google.common.base.*;
-import com.google.common.collect.*;
 import com.google.common.util.concurrent.*;
 import org.bitcoinj.core.listeners.*;
 import org.bitcoinj.script.ScriptException;
@@ -69,8 +68,8 @@ import static com.google.common.base.Preconditions.*;
  * we say it is an orphan chain. Orphan chains can occur when blocks are solved and received during the initial block
  * chain download, or if we connect to a peer that doesn't send us blocks in order.</p>
  *
- * <p>A reorganize occurs when the blocks that make up the best known chain changes. Note that simply adding a
- * new block to the top of the best chain isn't as reorganize, but that a reorganize is always triggered by adding
+ * <p>A reorganize occurs when the blocks that make up the best known chain change. Note that simply adding a
+ * new block to the top of the best chain isn't a reorganize, but that a reorganize is always triggered by adding
  * a new block that connects to some other (non best head) block. By "best" we mean the chain representing the largest
  * amount of work done.</p>
  *
@@ -79,7 +78,7 @@ import static com.google.common.base.Preconditions.*;
  */
 public abstract class AbstractBlockChain {
     private static final Logger log = LoggerFactory.getLogger(AbstractBlockChain.class);
-    protected final ReentrantLock lock = Threading.lock("blockchain");
+    protected final ReentrantLock lock = Threading.lock(AbstractBlockChain.class);
 
     /** Keeps a map of block hashes to StoredBlocks. */
     private final BlockStore blockStore;
@@ -174,14 +173,14 @@ public abstract class AbstractBlockChain {
         addTransactionReceivedListener(Threading.SAME_THREAD, wallet);
         int walletHeight = wallet.getLastBlockSeenHeight();
         int chainHeight = getBestChainHeight();
-        if (walletHeight != chainHeight) {
+        if (walletHeight != chainHeight && walletHeight > 0) {
             log.warn("Wallet/chain height mismatch: {} vs {}", walletHeight, chainHeight);
             log.warn("Hashes: {} vs {}", wallet.getLastBlockSeenHash(), getChainHead().getHeader().getHash());
 
             // This special case happens when the VM crashes because of a transaction received. It causes the updated
             // block store to persist, but not the wallet. In order to fix the issue, we roll back the block store to
             // the wallet height to make it look like as if the block has never been received.
-            if (walletHeight < chainHeight && walletHeight > 0) {
+            if (walletHeight < chainHeight) {
                 try {
                     rollbackBlockStore(walletHeight);
                     log.info("Rolled back block store to height {}.", walletHeight);
@@ -542,7 +541,8 @@ public abstract class AbstractBlockChain {
                     block.getTransactions() == null ? block : block.cloneAsHeader(), txOutChanges);
             versionTally.add(block.getVersion());
             setChainHead(newStoredBlock);
-            log.debug("Chain is now {} blocks high, running listeners", newStoredBlock.getHeight());
+            if (log.isDebugEnabled())
+                log.debug("Chain is now {} blocks high, running listeners", newStoredBlock.getHeight());
             informListenersForNewBlock(block, NewBlockType.BEST_CHAIN, filteredTxHashList, filteredTxn, newStoredBlock);
         } else {
             // This block connects to somewhere other than the top of the best known chain. We treat these differently.
@@ -598,7 +598,7 @@ public abstract class AbstractBlockChain {
         // (in the case of the listener being a wallet). Wallets need to know how deep each transaction is so
         // coinbases aren't used before maturity.
         boolean first = true;
-        Set<Sha256Hash> falsePositives = Sets.newHashSet();
+        Set<Sha256Hash> falsePositives = new HashSet<>();
         if (filteredTxHashList != null) falsePositives.addAll(filteredTxHashList);
 
         for (final ListenerRegistration<TransactionReceivedInBlockListener> registration : transactionReceivedListeners) {
@@ -613,7 +613,7 @@ public abstract class AbstractBlockChain {
                     public void run() {
                         try {
                             // We can't do false-positive handling when executing on another thread
-                            Set<Sha256Hash> ignoredFalsePositives = Sets.newHashSet();
+                            Set<Sha256Hash> ignoredFalsePositives = new HashSet<>();
                             informListenerForNewTransactions(block, newBlockType, filteredTxHashList, filteredTxn,
                                     newStoredBlock, notFirst, registration.listener, ignoredFalsePositives);
                         } catch (VerificationException e) {
@@ -897,7 +897,8 @@ public abstract class AbstractBlockChain {
                 StoredBlock prev = getStoredBlockInCurrentScope(orphanBlock.block.getPrevBlockHash());
                 if (prev == null) {
                     // This is still an unconnected/orphan block.
-                    log.debug("Orphan block {} is not connectable right now", orphanBlock.block.getHash());
+                    if (log.isDebugEnabled())
+                        log.debug("Orphan block {} is not connectable right now", orphanBlock.block.getHash());
                     continue;
                 }
                 // Otherwise we can connect it now.
@@ -1041,7 +1042,7 @@ public abstract class AbstractBlockChain {
         // Track false positives in batch by adding alpha to the false positive estimate once per count.
         // Each false positive counts as 1.0 towards the estimate.
         falsePositiveRate += FP_ESTIMATOR_ALPHA * count;
-        if (count > 0)
+        if (count > 0 && log.isDebugEnabled())
             log.debug("{} false positives, current rate = {} trend = {}", count, falsePositiveRate, falsePositiveTrend);
     }
 

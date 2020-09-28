@@ -219,7 +219,7 @@ public class Script {
                 chunk = new ScriptChunk(opcode, null);
             } else {
                 if (dataToRead > bis.available())
-                    throw new ScriptException(ScriptError.SCRIPT_ERR_BAD_OPCODE, "Push of data element that is larger than remaining data");
+                    throw new ScriptException(ScriptError.SCRIPT_ERR_BAD_OPCODE, "Push of data element that is larger than remaining data: " + dataToRead + " vs " + bis.available());
                 byte[] data = new byte[(int)dataToRead];
                 checkState(dataToRead == 0 || bis.read(data, 0, (int)dataToRead) == dataToRead);
                 chunk = new ScriptChunk(opcode, data);
@@ -258,27 +258,6 @@ public class Script {
             return ScriptPattern.extractHashFromP2WH(this);
         else
             throw new ScriptException(ScriptError.SCRIPT_ERR_UNKNOWN_ERROR, "Script not in the standard scriptPubKey form");
-    }
-
-    @Deprecated
-    public byte[] getCLTVPaymentChannelSenderPubKey() throws ScriptException {
-        if (!ScriptPattern.isSentToCltvPaymentChannel(this))
-            throw new ScriptException(ScriptError.SCRIPT_ERR_UNKNOWN_ERROR, "Script not a standard CHECKLOCKTIMVERIFY transaction: " + this);
-        return ScriptPattern.extractSenderPubKeyFromCltvPaymentChannel(this);
-    }
-
-    @Deprecated
-    public byte[] getCLTVPaymentChannelRecipientPubKey() throws ScriptException {
-        if (!ScriptPattern.isSentToCltvPaymentChannel(this))
-            throw new ScriptException(ScriptError.SCRIPT_ERR_UNKNOWN_ERROR, "Script not a standard CHECKLOCKTIMVERIFY transaction: " + this);
-        return ScriptPattern.extractRecipientPubKeyFromCltvPaymentChannel(this);
-    }
-
-    @Deprecated
-    public BigInteger getCLTVPaymentChannelExpiry() throws ScriptException {
-        if (!ScriptPattern.isSentToCltvPaymentChannel(this))
-            throw new ScriptException(ScriptError.SCRIPT_ERR_UNKNOWN_ERROR, "Script not a standard CHECKLOCKTIMEVERIFY transaction: " + this);
-        return ScriptPattern.extractExpiryFromCltvPaymentChannel(this);
     }
 
     /**
@@ -640,12 +619,6 @@ public class Script {
     @Deprecated
     public boolean isSentToMultiSig() {
         return ScriptPattern.isSentToMultisig(this);
-    }
-
-    /** @deprecated use {@link ScriptPattern#isSentToCltvPaymentChannel(Script)} */
-    @Deprecated
-    public boolean isSentToCLTVPaymentChannel() {
-        return ScriptPattern.isSentToCltvPaymentChannel(this);
     }
 
     private static boolean equalsRange(byte[] a, int start, byte[] b) {
@@ -1586,8 +1559,7 @@ public class Script {
                 throw new ScriptException(ScriptError.SCRIPT_ERR_SIG_DER, "Cannot decode", x);
             }
             ECKey pubkey = ECKey.fromPublicOnly(witness.getPush(1));
-            Script scriptCode = new ScriptBuilder().data(ScriptBuilder.createP2PKHOutputScript(pubkey).getProgram())
-                    .build();
+            Script scriptCode = ScriptBuilder.createP2PKHOutputScript(pubkey);
             Sha256Hash sigHash = txContainingThis.hashForWitnessSignature(scriptSigIndex, scriptCode, value,
                     signature.sigHashMode(), false);
             boolean validSig = pubkey.verify(sigHash, signature);
